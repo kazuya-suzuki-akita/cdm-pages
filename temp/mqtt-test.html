@@ -1,46 +1,39 @@
 <!DOCTYPE html>
-<html lang="jp">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPS test</title>
+  <title>Weboscoket MQTT</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 <body>
-  <div id="message"></div>
-  <script>
-  /***
-      * EMQX の ws 接続用のデフォルトポートは 8083、wss 接続用は 8084 です。
-      * 接続アドレスの後にパスを追加する必要があることに注意してください。例: /mqtt
-  */
-  const url = 'ws://broker.emqx.io:8083/mqtt'
-
-  // MQTT クライアントインスタンスを作成
-  const options = {
-    // クリアセッション
-    clean: true,
-    connectTimeout: 4000,
-    // 認証
-    clientId: 'emqx_test',
-    username: 'emqx',
-    password: 'public',
-  };
-  const client = mqtt.connect(url, options);
-
-  client.on( 'connect', function () {
-    console.log( 'Connected' )
-    // トピックをサブスクライブ
-    client.subscribe( 'akita-pu/gpstest' );
-  })
-
-  // メッセージを受信
-  client.on('message', function (topic, message) {
-    // message をコンソールに出力
-    console.log( message.toString() );
-
-    // 本文中の id='message' 中の中身を書き換え
-    element_message = document.getElementById( 'message' );
-    element_message.innerText = message.toString();
-  })
-  </script>
+  Use WebSocket client to connect to MQTT server
 </body>
+<script>
+    const clientId = 'mqttjs_' + Math.random().toString(16).substr(2, 8)
+    const host = 'ws://broker.emqx.io:8083/mqtt'
+    const options = {
+      keepalive: 60,
+      clientId: clientId,
+      protocolId: 'MQTT',
+      protocolVersion: 4,
+      clean: true,
+      reconnectPeriod: 1000,
+      connectTimeout: 30 * 1000,
+      will: {
+        topic: 'WillMsg',
+        payload: 'Connection Closed abnormally..!',
+        qos: 0,
+        retain: false
+      },
+    }
+    console.log('Connecting mqtt client')
+    const client = mqtt.connect(host, options)
+    client.on('error', (err) => {
+      console.log('Connection error: ', err)
+      client.end()
+    })
+    client.on('reconnect', () => {
+      console.log('Reconnecting...')
+    })
+</script>
