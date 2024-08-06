@@ -1,46 +1,97 @@
 <!DOCTYPE html>
-<html lang="jp">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPS test</title>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-</head>
-<body>
-  <div id="message"></div>
-  <script>
-  /***
-      * EMQX の ws 接続用のデフォルトポートは 8083、wss 接続用は 8084 です。
-      * 接続アドレスの後にパスを追加する必要があることに注意してください。例: /mqtt
-  */
-  const url = 'wss://broker.emqx.io:8084/mqtt'
+<html lang="ja-JP">
+    <head>
+        <meta charset="utf-8">
+        <title>BusLocation2024</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+        <!-- Make sure you put this AFTER Leaflet's CSS -->
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+        <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+        <style>
+            html, body { height : 100% }
+            #map { height : 100% }
+        </style>
+        <script type="text/javascript">
+            //// 各種オプション
+            // 地図の初期位置
+            const default_location = [ 39.393839, 140.069774 ];
+            // MQTT パラメータ
+            const mqtt_topic = 'akita-pu/gpstest';
+            const mqtt_url = 'wss://broker.emqx.io:8084/mqtt';
+            const mqtt_options = {
+                clean: true,
+                connectTimeout: 4000,
+                // 認証
+                clientId: 'apu_bl_' + Math.random().toString(16).substr(2, 8),
+                username: 'emqx',
+                password: 'public',
+            };
 
-  // MQTT クライアントインスタンスを作成
-  const options = {
-    // クリアセッション
-    clean: true,
-    connectTimeout: 4000,
-    // 認証
-    clientId: 'emqx_test',
-    username: 'emqx',
-    password: 'public',
-  };
-  const client = mqtt.connect(url, options);
+            // 読み込み後，ページの描画が始まるときに実行される関数
+            function init() {
+                // 地図の作成
+                map = L.map('map').setView(default_location, 14);
+                //OpenStreetMap:タイルを作成
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+                L.control.scale().addTo(map); // 地図に縮尺表示を追加
 
-  client.on( 'connect', function () {
-    console.log( 'Connected' )
-    // トピックをサブスクライブ
-    client.subscribe( 'akita-pu/gpstest' );
-  })
+                // 地図上におけるバス位置表示のマーカーを管理するための連想配列を用意する
+                markers = {};
 
-  // メッセージを受信
-  client.on('message', function (topic, message) {
-    // message をコンソールに出力
-    console.log( message.toString() );
+                // MQTT クライアントインスタンスを作成
+                mqtt_client = mqtt.connect( mqtt_url, mqtt_options );
+                mqtt_client.on( 'connect', () => {
+                    console.log( 'Connected' );
+                    mqtt_client.subscribe( mqtt_topic ); // トピックをサブスクライブ
+                } );
+                mqtt_client.on( 'close', () => {
+                    console.log( 'Closed' );
+                });
+                mqtt_client.on( 'disconnect', (packet) => {
+                    console.log( 'Disconnected' );
+                    console.log( packet );
+                });
+                mqtt_client.on( 'message', on_message );
+            };
 
-    // 本文中の id='message' 中の中身を書き換え
-    element_message = document.getElementById( 'message' );
-    element_message.innerText = message.toString();
-  })
-  </script>
-</body>
+            // MQTT メッセージを受信時に呼び出される関数
+            function on_message( topic, message ) {
+                console.log( message.toString() ); // message をコンソールに出力 (デバッグ用)
+
+                // JSON から各種データを取り出し
+                let data = JSON.parse( message.toString() );
+                let id = data[ 'id' ];
+                let lat = data[ 'lat' ];
+                let lng = data[ 'lng' ];
+                let temp = data[ 'temp' ].toFixed(1); // 気温データは小数点第一位まで
+                let hum = data[ 'hum' ].toFixed(); // 湿度データは整数部分だけ
+
+                // 同じIDのマーカーがすでに存在するなら，古いものを消しておく
+                if ( id in markers ) {
+                    markers[ id ].removeFrom(map);
+                };
+
+                // マーカーの作成し， map に追加
+                let marker = L.circleMarker( [ lat, lng ], {
+                    color: "#0000ff",
+					fillColor: "#00ffff",
+					redius: 5
+                }).addTo( map );
+
+                // 作成したマーカーにポップアップを付与
+                let popup_string = id + '号車 (' + temp + '℃, ' + hum + '%)';
+                marker.bindPopup(popup_string, { autoClose: false, autoPan: false })
+                    .openPopup();
+
+                // 作成したマーカーを markers に保存しておく (更新時に古いものを消すため)
+				markers[ id ] = marker;
+            };
+        </script>
+    </head>
+    <body onload="init()">
+        <div id="map"></div>
+    </body>
+</html>
