@@ -1,4 +1,0 @@
-[build]
-  # Asset Optimizationの設定を無効にする
-  [build.processing]
-    skip_processing = true
